@@ -80,8 +80,8 @@ class Display:
             surface     = self._screen,
             color       = fighter.color,
             rect        = arc_rect,
-            start_angle = fighter.angle - 10,
-            stop_angle  = fighter.angle + 10,
+            start_angle = fighter.angle - 0.1,
+            stop_angle  = fighter.angle + 0.1,
             width       = fighter.thiccness
         )
     
