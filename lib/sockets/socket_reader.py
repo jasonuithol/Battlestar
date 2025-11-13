@@ -1,5 +1,6 @@
 import queue
 import socket
+import traceback
 
 from lib.thread_runner import ThreadRunner
 
@@ -30,6 +31,12 @@ class SocketReader(ThreadRunner):
             self._incoming.put(message)
         except socket.timeout:
             return
+        except ConnectionResetError as e:
+            #
+            # TODO: real error handling
+            #
+            print(f"(socket_reader) received error {e}\n{traceback.print_exc()}")
+            self.is_alive = False
 
     def read(self) -> MessageFormat:
         assert self.handle.is_alive(), "Cannot read from a dead-threaded reader"

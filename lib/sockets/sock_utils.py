@@ -3,7 +3,7 @@ import socket
 
 LISTENER_PORT = 5000
 SOCK_TIMEOUT  = 1.0
-QUEUE_SIZE    = 10
+QUEUE_SIZE    = 100
 BUFFER_SIZE   = 1024
 
 NetworkId = tuple[str, int]

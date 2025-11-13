@@ -41,6 +41,10 @@ class ServerSocket(ThreadRunner):
         for client in self.clients.values():
             client.write(message)
 
+    def write_to(self, client_address: NetworkId, message: MessageFormat):
+        client = self._get_client(client_address)
+        client.write(message)
+
     def readall(self) -> list[tuple[NetworkId, MessageFormat]]:
         messages = []
         for address, client in self.clients.items():
@@ -52,6 +56,10 @@ class ServerSocket(ThreadRunner):
     def _add_client(self, client_address: NetworkId, socket_connection: SocketConnection):
         with self._clients_lock:
             self._clients[client_address] = socket_connection
+
+    def _get_client(self, client_address: NetworkId):
+        with self._clients_lock:
+            return self._clients[client_address]
 
     @property
     def clients(self) -> dict[NetworkId, SocketConnection]:
