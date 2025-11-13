@@ -8,7 +8,7 @@ from .socket_message_codec import MessageFormat, encode
 
 class SocketWriter(ThreadRunner):
 
-    def __init__(self, sock: socket.socket, **kwargs):
+    def __init__(self, sock: socket.socket):
 
         super().__init__(
             name = f"Socket writer {id(self)}",
