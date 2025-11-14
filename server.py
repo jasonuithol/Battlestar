@@ -26,10 +26,30 @@ spawn_slots = [
 
 while True:
 
-    # read all incoming messages
-    messages = server_socket.readall()
+    # remove dead clients
+    for dead_network_id in server_socket.dead_clients:
 
-    for server_message in messages:
+        # Shuffle the spawn slots to move the dead fighter's slot to the end of the list.
+        fighter_index = [
+            index
+            for index, network_id in enumerate(connected_fighters.keys())
+            if dead_network_id == network_id
+        ]
+        assert len(fighter_index) < 2, "too many fighter indexes !"
+        if len(fighter_index) > 0:
+            slot = spawn_slots.pop(fighter_index[0])
+            spawn_slots.append(slot)
+
+        # Remove the fighter from the list of tracked players.
+        if dead_network_id in connected_fighters.keys():
+            del connected_fighters[dead_network_id]
+
+        # Remove the dead fighter from the "is dead" list - we're done killing it.
+        server_socket.remove_dead_client(dead_network_id)
+        print(f"(server) Removed fighter ({dead_network_id})")
+
+    # read all incoming messages
+    for server_message in server_socket.readall():
 
         network_id, raw_message = server_message
         

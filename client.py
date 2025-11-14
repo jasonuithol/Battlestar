@@ -3,8 +3,8 @@ import time
 import pygame
 
 from lib.sockets.client_socket import ClientSocket
-
 from lib.sockets.sock_utils import NetworkId
+
 from models.fighter import Fighter
 from models.network_protocol import FighterUpdate, connect_request, create_fighter, fighter_update, receive_message, update_fighter
 
@@ -33,7 +33,7 @@ class Client:
 
         self._join_server()
 
-        pygame.key.set_repeat(300, 50)  # Start repeating after 300ms, repeat every 50ms
+        pygame.key.set_repeat(50, 50) # delay, repeat (milliseconds)
         self.running = True
 
         # finished initialising, tidy up.
@@ -55,6 +55,10 @@ class Client:
 
         self.client_socket.write(connect_request())
         while (raw_message := self.client_socket.read()) is None:
+
+            if self.client_socket.quit_received():
+                exit()
+
             pass
 
         message = receive_message(raw_message)
@@ -75,6 +79,10 @@ class Client:
     def _main_loop(self):
 
         print("(client) started")
+
+        if self.client_socket.quit_received():
+            print("(client) client socket received quit signal")
+            exit()            
 
         self.display.draw()
 

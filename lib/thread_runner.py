@@ -35,11 +35,12 @@ class ThreadRunner(ABC):
 
         print(f"{__class__.__name__} Finished thread '{self.name}'")
 
-    def stop(self):
+    def stop(self, blocking: bool):
         self.is_alive = False
         if self.daemon:
             return
-        self.handle.join()
+        if blocking:
+            self.handle.join()
         
     @abstractmethod
     def loop(self): ...

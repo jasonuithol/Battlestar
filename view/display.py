@@ -41,8 +41,6 @@ class Display:
 
         for fighter in self.fighters:
             self.draw_fighter(fighter)
-
-        print("(display) Updated contents")
     
     def add_fighter(self, fighter: Fighter):
         with self._fighter_lock:

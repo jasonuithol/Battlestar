@@ -21,6 +21,9 @@ class ConnectRequest(NamedTuple):
 class ConnectReject(NamedTuple):
     reason: str
 
+class ConnectError(NamedTuple):
+    reason: str
+
 class FighterUpdate(NamedTuple):
     network_id_host: str
     network_id_port: int
@@ -65,6 +68,9 @@ def connect_request() -> MessageFormat:
 
 def connect_reject(reason: str) -> MessageFormat:
     return protocol.encode(ConnectReject(reason))
+
+def connect_error(reason: str) -> MessageFormat:
+    return protocol.encode(connect_error(reason))
 
 def fighter_update(fighter: Fighter) -> MessageFormat:
 
