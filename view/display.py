@@ -7,24 +7,19 @@ NOMINAL_FPS = 60.0
 
 class Display:
 
+    def __init__(self):
+        self._fighter_lock = Lock()
+        self._fighters = set[Fighter]()
+
     def init(self):
         pygame.init()
         self._clock = pygame.Clock()
 
-        # Get current display resolution
-        info = pygame.display.Info()
-        screen_width, screen_height = info.current_w, info.current_h
-
         # Create a borderless window that fills the screen
-        self._screen = pygame.display.set_mode(
-            (screen_width, screen_height),
-            pygame.NOFRAME  # removes window borders
-        )
+        info = pygame.display.Info()
+        self._screen = pygame.display.set_mode((info.current_w, info.current_h), pygame.NOFRAME)
 
-        pygame.display.set_caption(f"Battlestar NonGalactica: fps={self._clock.get_fps()}")
-
-        self._fighter_lock = Lock()
-        self._fighters = set[Fighter]()
+        self.update_window_title()
 
         self._running = True
         print("(display) initialised")
@@ -39,18 +34,30 @@ class Display:
         self._clock.tick(NOMINAL_FPS)
 
     def draw(self):
+
+        self.update_window_title()
+
         self._screen.fill((0, 0, 0))
 
         for fighter in self.fighters:
             self.draw_fighter(fighter)
+
+        print("(display) Updated contents")
     
     def add_fighter(self, fighter: Fighter):
         with self._fighter_lock:
             self._fighters.add(fighter)
+            num_fighters = len(self._fighters)
+
+        print(f"(display) added fighter {num_fighters}")
 
     def remove_fighter(self, fighter: Fighter):
         with self._fighter_lock:
             self._fighters.remove(fighter)
+
+    def num_fighters(self) -> int:
+        with self._fighter_lock:
+            return len(self._fighters)
 
     @property
     def fighters(self):
@@ -58,6 +65,9 @@ class Display:
             return set(self._fighters)
 
     def draw_fighter(self, fighter: Fighter):
+
+        fighter.calculate()
+
         pygame.draw.circle(
             surface = self._screen,
             color   = fighter.color,
@@ -84,4 +94,8 @@ class Display:
             stop_angle  = fighter.angle + 0.1,
             width       = fighter.thiccness
         )
+
+    def update_window_title(self):
+        pygame.display.set_caption(f"Battlestar NonGalactica: players={self.num_fighters()} fps={self._clock.get_fps()}")
+
     

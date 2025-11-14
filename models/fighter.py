@@ -35,14 +35,14 @@ class Fighter:
 
     def calculate(self):
         new_calculation_time = datetime.datetime.now()
-        seconds_elapsed = (self.last_calculated - new_calculation_time).total_seconds
+        seconds_elapsed = (self.last_calculated - new_calculation_time).total_seconds()
 
         v2_offset = pygame.math.Vector2()
-        v2_offset.from_polar(self.velocity * seconds_elapsed, self.angle)
+        v2_offset.from_polar((self.velocity * seconds_elapsed, self.angle))
 
         v2_coord = pygame.math.Vector2(self.coords)
         v2_coord += v2_offset
 
-        self.coords = tuple(v2_coord)
+        self.coords = int(v2_coord.x), int(v2_coord.y)
 
         self.last_calculated = new_calculation_time

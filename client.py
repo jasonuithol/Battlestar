@@ -1,3 +1,4 @@
+import gc
 from threading import Lock
 import time
 import pygame
@@ -6,110 +7,163 @@ from lib.sockets.client_socket import ClientSocket
 
 from lib.sockets.sock_utils import NetworkId
 from models.fighter import Fighter
-from models.network_protocol import FighterUpdate, connect_request, fighter_update, receive_message, update_fighter
+from models.network_protocol import FighterUpdate, connect_request, create_fighter, fighter_update, receive_message, update_fighter
 
 from view.display import Display
 
-def _join_server():
+class Client:
 
-    client_socket.write(connect_request())
-    while (raw_message := client_socket.read()) is None:
-        pass
-    message = receive_message(raw_message)
-    if isinstance(message, FighterUpdate):
-        local_fighter.network_id = message.get_network_id()
-        remote_fighter.network_id = message.get_network_id()
-        update_fighter(local_fighter, message)
-        update_fighter(remote_fighter, message)
-    else:
-        print(f"(client) dropping unexpected message: {message}")
-    time.sleep(0.1)
+    def __init__(self):
 
-def _dispatch_event(event: pygame.event.Event) -> bool:
-    global running
+        self.client_socket = ClientSocket()
 
-    if event.type == pygame.QUIT:
-        running = False
-        return
+        self.local_fighter  = Fighter()
+        self.remote_fighter = Fighter()
 
-    if event.type != pygame.KEYDOWN:
-        return
+        self.other_fighters_lock = Lock()
+        self.other_fighters = dict[NetworkId, Fighter]()        
 
-    if event.key == pygame.K_LEFT:
-        local_fighter.left()
-    elif event.key == pygame.K_RIGHT:
-        local_fighter.right()
-    elif event.key == pygame.K_UP:
-        local_fighter.forward()
-    elif event.key == pygame.K_DOWN:
-        local_fighter.backward()
-    else:
-        return False
-    
-    # moved, so update the server
-    return True
+        self.display = Display()
 
-def _network_sync():
+    def launch(self):
 
-    while raw_message := client_socket.read():
+        self.display.init()
+
+        self.client_socket.start()
+
+        print("(client) joining session")
+
+        self._join_server()
+
+        pygame.key.set_repeat(300, 50)  # Start repeating after 300ms, repeat every 50ms
+        self.running = True
+
+        # finished initialising, tidy up.
+        gc.collect()
+
+        self._main_loop()
+        self.stop()
+
+        print("(client) stopped")
+
+    def stop(self):
+
+        print("(client) stopping")
+
+        self.client_socket.stop()
+        self.display.stop()
+
+    def _join_server(self):
+
+        self.client_socket.write(connect_request())
+        while (raw_message := self.client_socket.read()) is None:
+            pass
 
         message = receive_message(raw_message)
 
-        if not isinstance(message, FighterUpdate):
-            print(f"(client) dropping unexpected message {message!r}")
+        if isinstance(message, FighterUpdate):
+            self.local_fighter = create_fighter(message)
+            self.remote_fighter = create_fighter(message)
 
-        with other_fighters_lock:
-            other_fighter: Fighter = other_fighters.get(message.get_network_id(), None)
-            if not other_fighter:
-                other_fighter = Fighter()
-                other_fighters[message.get_network_id()] = other_fighter
-                display.add_fighter(other_fighter)
-            elif other_fighter.network_id == message.get_network_id():
-                # It's MEEEEE
-                update_fighter(remote_fighter, message)
-                update_fighter(local_fighter, message)
+            self.display.add_fighter(self.local_fighter)
+
+            print(f"(client) successfully joined server as: {message.get_network_id()} ")
+
+        else:
+            print(f"(client) dropping unexpected message: {message}")
+
+        time.sleep(0.1)
+
+    def _main_loop(self):
+
+        print("(client) started")
+
+        self.display.draw()
+
+        while self.running:
+            for event in pygame.event.get():
+                if self._dispatch_event(event):
+                    outgoing = fighter_update(self.local_fighter)
+                    print(f"(client) Sending outgoing: {outgoing}")
+                    self.client_socket.write(outgoing)
+                    self.display.draw()
+
+            if self._network_sync():
+                self.display.draw()
+
+            self.display.render()
+
+    def _dispatch_event(self, event: pygame.event.Event) -> bool:
+
+        if event.type == pygame.QUIT:
+            self.running = False
+            return
+
+        if event.type != pygame.KEYDOWN:
+            return
+
+        if event.key == pygame.K_ESCAPE:
+            self.running = False
+            return
+
+        if event.key == pygame.K_LEFT:
+            self.local_fighter.left()
+        elif event.key == pygame.K_RIGHT:
+            self.local_fighter.right()
+        elif event.key == pygame.K_UP:
+            self.local_fighter.forward()
+        elif event.key == pygame.K_DOWN:
+            self.local_fighter.backward()
+        else:
+            return False
+        
+        # moved, so update the server
+        return True
+
+    def _network_sync(self) -> bool:
+
+        updated_state = False
+
+        while raw_message := self.client_socket.read():
+
+            message = receive_message(raw_message)
+
+            if not isinstance(message, FighterUpdate):
+                print(f"(client) dropping unexpected message {message!r}")
                 continue
 
-        update_fighter(other_fighter, message)
+            print(f"(client) received message: {message!r}")
 
-        display.draw()
+            if message.get_network_id() == self.local_fighter.network_id:
+                # It's MEEEEE
+                update_fighter(self.remote_fighter, message)
+                update_fighter(self.local_fighter, message)
+                print(f"(client) received remote update on self: {message!r}")
+                updated_state = True
+                continue
+
+            with self.other_fighters_lock:
+                other_fighter: Fighter = self.other_fighters.get(message.get_network_id(), None)
+
+            if other_fighter:
+                print(f"(client) received remote update on other player: {message!r}")
+                update_fighter(other_fighter, message)
+
+            else:
+                other_fighter = create_fighter(message)
+                self.display.add_fighter(other_fighter)
+                print(f"(client) another player joined the server: {other_fighter.network_id}")
+
+                with self.other_fighters_lock:
+                    self.other_fighters[other_fighter.network_id] = other_fighter
+
+            updated_state = True
+
+        return updated_state
 
 #
 # MAIN
 #
 
-client_socket = ClientSocket()
-client_socket.start()
-
-local_fighter  = Fighter()
-remote_fighter = Fighter()
-
-other_fighters_lock = Lock()
-other_fighters = dict[NetworkId, Fighter]()
-
-print("(client) joining session")
-
-_join_server()
-
-display = Display()
-display.init()
-
-running = True
-
-print("(client) started")
-
-while running:
-    for event in pygame.event.get():
-        if _dispatch_event(event):
-            outgoing = fighter_update(local_fighter)
-            print(f"Sending outgoing: {outgoing}")
-            client_socket.write(outgoing)
-        _network_sync()
-    display.render()
-
-print("(client) stopping")
-
-client_socket.stop()
-display.stop()
-
-print("(client) stopped")
+client = Client()
+client.launch()

@@ -42,5 +42,9 @@ class DarkNamedTupleProtocol:
             if v == self.NULL:
                 casted.append(None)
             else:
-                casted.append(typ(v))
+                try:
+                    typed_value = typ(v)
+                except ValueError as e:
+                    print(f"(protocol) Expected type {typ.__name__} got {v!r} for field {f}")
+                casted.append(typed_value)
         return cls(*casted)

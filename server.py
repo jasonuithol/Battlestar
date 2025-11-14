@@ -1,6 +1,5 @@
+import gc
 import time
-
-from threading import Lock
 
 from lib.sockets.server_socket import ServerSocket
 from lib.sockets.sock_utils import NetworkId
@@ -11,7 +10,6 @@ from models.network_protocol import ConnectRequest, FighterUpdate, connect_rejec
 server_socket = ServerSocket()
 server_socket.start()
 
-#connected_fighters_lock = Lock()
 connected_fighters = dict[NetworkId, Fighter]()
 
 BLUE   = (000, 000, 255)
@@ -60,6 +58,8 @@ while True:
                 server_socket.write_to(network_id, fighter_update(connected_fighter))
                 connected_fighters[network_id] = connected_fighter
 
+                gc.collect()
+
         elif isinstance(message, FighterUpdate):
             
             if message.get_network_id() != network_id:
@@ -78,4 +78,9 @@ while True:
 
                 server_socket.broadcast(fighter_update(connected_fighter))
 
+                gc.collect()
+
+        for fighter in connected_fighters.values():
+            fighter.calculate()
+            
     time.sleep(0.001)

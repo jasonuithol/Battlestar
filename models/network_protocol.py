@@ -93,6 +93,12 @@ def fighter_update(fighter: Fighter) -> MessageFormat:
 
     return protocol.encode(message)
 
+def create_fighter(fighter_update: FighterUpdate):
+    fighter = Fighter()
+    fighter.network_id = fighter_update.get_network_id()
+    update_fighter(fighter, fighter_update)
+    return fighter
+
 def update_fighter(fighter: Fighter, fighter_update: FighterUpdate):
     fighter.coords    = fighter_update.get_coords()
     fighter.color     = fighter_update.get_color()

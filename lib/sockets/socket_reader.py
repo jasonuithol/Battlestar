@@ -18,7 +18,7 @@ class SocketReader(ThreadRunner):
         )
 
         # This socket is shared, so this class does NOT close it.
-        self._sock     = sock
+        self._sock = sock
 
         self._incoming = queue.Queue(QUEUE_SIZE)
 
