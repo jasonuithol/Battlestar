@@ -5,6 +5,8 @@ from models.fighter import Fighter
 
 NOMINAL_FPS = 60.0
 
+ARENA_SIZE = 1000, 1000
+
 class Display:
 
     def __init__(self):
@@ -18,6 +20,18 @@ class Display:
         # Create a borderless window that fills the screen
         info = pygame.display.Info()
         self._screen = pygame.display.set_mode((info.current_w, info.current_h), pygame.NOFRAME)
+
+        self._arena_offset = (
+            (info.current_w - ARENA_SIZE[0]) // 2,
+            (info.current_h - ARENA_SIZE[1]) // 2,
+        )
+
+        self._arena_rect = (
+            self._arena_offset[0],
+            self._arena_offset[1],
+            ARENA_SIZE[0],
+            ARENA_SIZE[1]
+        )
 
         self.update_window_title()
 
@@ -37,7 +51,8 @@ class Display:
 
         self.update_window_title()
 
-        self._screen.fill((0, 0, 0))
+        self._screen.fill((30, 30, 30))
+        self._screen.fill((0, 0, 0), self._arena_rect)
 
         for fighter in self.fighters:
             self.draw_fighter(fighter)
@@ -66,15 +81,20 @@ class Display:
 
         fighter.calculate()
 
+        offset_fighter_coords = (
+            fighter.coords[0] + self._arena_offset[0],
+            fighter.coords[1] + self._arena_offset[1],
+        )
+
         pygame.draw.circle(
             surface = self._screen,
             color   = fighter.color,
-            center  = fighter.coords,
+            center  = offset_fighter_coords,
             radius  = fighter.radius,
             width   = fighter.thiccness
         )
 
-        x,y = fighter.coords
+        x,y = offset_fighter_coords
         arc_radius = fighter.radius + 10
         
         arc_rect = (
