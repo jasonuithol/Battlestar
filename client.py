@@ -1,5 +1,4 @@
 import gc
-from threading import Lock
 import time
 import pygame
 
@@ -20,7 +19,6 @@ class Client:
         self.local_fighter  = Fighter()
         self.remote_fighter = Fighter()
 
-        self.other_fighters_lock = Lock()
         self.other_fighters = dict[NetworkId, Fighter]()        
 
         self.display = Display()
@@ -86,11 +84,15 @@ class Client:
                     outgoing = fighter_update(self.local_fighter)
                     print(f"(client) Sending outgoing: {outgoing}")
                     self.client_socket.write(outgoing)
-                    self.display.draw()
 
-            if self._network_sync():
-                self.display.draw()
+            self._network_sync()
 
+            for fighter in self.other_fighters.values():
+                fighter.calculate()
+
+            self.local_fighter.calculate()
+
+            self.display.draw()
             self.display.render()
 
     def _dispatch_event(self, event: pygame.event.Event) -> bool:
@@ -142,8 +144,7 @@ class Client:
                 updated_state = True
                 continue
 
-            with self.other_fighters_lock:
-                other_fighter: Fighter = self.other_fighters.get(message.get_network_id(), None)
+            other_fighter: Fighter = self.other_fighters.get(message.get_network_id(), None)
 
             if other_fighter:
                 print(f"(client) received remote update on other player: {message!r}")
@@ -154,8 +155,7 @@ class Client:
                 self.display.add_fighter(other_fighter)
                 print(f"(client) another player joined the server: {other_fighter.network_id}")
 
-                with self.other_fighters_lock:
-                    self.other_fighters[other_fighter.network_id] = other_fighter
+                self.other_fighters[other_fighter.network_id] = other_fighter
 
             updated_state = True
 

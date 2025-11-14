@@ -3,8 +3,8 @@ import datetime
 import pygame
 from lib.sockets.sock_utils import NetworkId
 
-ANGULAR_SPEED = 0.1
-ACCELERATION_MAGNITUDE = 0.1
+ANGULAR_SPEED = 0.2
+ACCELERATION_MAGNITUDE = 0.2
 
 FighterColor = tuple[int, int ,int]
 
@@ -13,11 +13,11 @@ class Fighter:
         self.network_id: NetworkId = None
 
         self.coords     = (0, 0)
-        self.velocity   = 0.0
+        self.speed      = 0.0
         self.angle      = 0.0
 
         self.color: FighterColor = None
-        self.radius: float       = 100.0
+        self.radius: float       = 50.0
         self.thiccness: int      = 3
 
         self.last_calculated = datetime.datetime.now()
@@ -29,16 +29,16 @@ class Fighter:
     def right(self):
         self.angle += ANGULAR_SPEED
     def forward(self):
-        self.velocity += ACCELERATION_MAGNITUDE
+        self.speed += ACCELERATION_MAGNITUDE
     def backward(self):
-        self.velocity -= ACCELERATION_MAGNITUDE
+        self.speed -= ACCELERATION_MAGNITUDE
 
     def calculate(self):
         new_calculation_time = datetime.datetime.now()
         seconds_elapsed = (self.last_calculated - new_calculation_time).total_seconds()
 
         v2_offset = pygame.math.Vector2()
-        v2_offset.from_polar((self.velocity * seconds_elapsed, self.angle))
+        v2_offset.from_polar((self.speed * seconds_elapsed, self.angle))
 
         v2_coord = pygame.math.Vector2(self.coords)
         v2_coord += v2_offset
