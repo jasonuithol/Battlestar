@@ -6,7 +6,7 @@ import time
 class ThreadRunner(ABC):
 
     def __init__(self, name: str, daemon: bool, sleep: float, **kwargs):
-        self.is_alive: bool = None
+        self._alive: bool = None
         self.name = name
         self.daemon = daemon
         self.sleep = sleep
@@ -25,18 +25,18 @@ class ThreadRunner(ABC):
 
     def _run_loop(self):
 
-        print(f"{__class__.__name__} Started thread '{self.name}'")
+        print(f"{self.name}: Started thread '{self.name}'")
 
-        self.is_alive = True
+        self._alive = True
 
-        while self.is_alive:
+        while self._alive == True:
             self.loop()
             time.sleep(self.sleep)
 
-        print(f"{__class__.__name__} Finished thread '{self.name}'")
+        print(f"{self.name}: Finished thread '{self.name}'")
 
     def stop(self, blocking: bool):
-        self.is_alive = False
+        self._alive = False
         if self.daemon:
             return
         if blocking:
@@ -45,3 +45,5 @@ class ThreadRunner(ABC):
     @abstractmethod
     def loop(self): ...
 
+    def is_alive(self) -> bool:
+        return self._alive

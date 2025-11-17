@@ -2,11 +2,15 @@ import gc
 import time
 import pygame
 
+from state.fighter import Fighter
+
 from lib.sockets.client_socket import ClientSocket
 from lib.sockets.sock_utils import NetworkId
 
-from models.fighter import Fighter
-from models.network_protocol import FighterUpdate, connect_request, create_fighter, fighter_update, receive_message, update_fighter
+import lib.network_protocols.battlestar_protocol
+
+from lib.network_protocols.named_tuple_codec import MessageFormat, NamedTupleCodec
+from lib.network_protocols.battlestar_protocol import FighterUpdate, connect_request, create_fighter, fighter_update, update_fighter
 
 from view.display import Display
 
@@ -14,7 +18,7 @@ class Client:
 
     def __init__(self):
 
-        self.client_socket = ClientSocket()
+        self.client_socket = ClientSocket(codec = NamedTupleCodec(lib.network_protocols.battlestar_protocol))
 
         self.local_fighter  = Fighter()
         self.remote_fighter = Fighter()
@@ -29,9 +33,7 @@ class Client:
 
         self.client_socket.start()
 
-        print("(client) joining session")
-
-        self._join_server()
+        leftover_messages = self._join_server()
 
         pygame.key.set_repeat(50, 50) # delay, repeat (milliseconds)
         self.running = True
@@ -39,7 +41,7 @@ class Client:
         # finished initialising, tidy up.
         gc.collect()
 
-        self._main_loop()
+        self._main_loop(leftover_messages)
         self.stop()
 
         print("(client) stopped")
@@ -51,38 +53,50 @@ class Client:
         self.client_socket.stop()
         self.display.stop()
 
-    def _join_server(self):
+    def _join_server(self) -> list[MessageFormat]:
+
+        print("(client) joining session")
 
         self.client_socket.write(connect_request())
-        while (raw_message := self.client_socket.read()) is None:
 
-            if self.client_socket.quit_received():
-                exit()
+        print("(client) waiting for response from server")
 
-            pass
+        connected = False
+        leftover_messages = list[MessageFormat]()
 
-        message = receive_message(raw_message)
+        while not connected:
 
-        if isinstance(message, FighterUpdate):
-            self.local_fighter = create_fighter(message)
-            self.remote_fighter = create_fighter(message)
+            for message in self.client_socket.read():
 
-            self.display.add_fighter(self.local_fighter)
+                if self.client_socket.quit_received():
+                    exit()
 
-            print(f"(client) successfully joined server as: {message.get_network_id()} ")
+                if isinstance(message, FighterUpdate):
+                    self.local_fighter  = create_fighter(message)
+                    self.remote_fighter = create_fighter(message)
 
-        else:
-            print(f"(client) dropping unexpected message: {message}")
+                    self.display.add_fighter(self.local_fighter)
+                    connected = True
+                    print(f"(client) successfully joined server as: {message.get_network_id()} ")
+                    break
 
-        time.sleep(0.1)
+                else:
+                    print(f"(client) delaying processing of unexpected message: {message}")
+                    leftover_messages.append(message)
 
-    def _main_loop(self):
+            time.sleep(0.1)
 
-        print("(client) started")
+        return leftover_messages
+
+    def _main_loop(self, leftover_messages: list[MessageFormat]):
+
+        print(f"(client) started with {len(leftover_messages)} leftover messages")
 
         if self.client_socket.quit_received():
             print("(client) client socket received quit signal")
             exit()            
+
+        self._network_sync(leftover_messages)
 
         self.display.draw()
 
@@ -93,7 +107,7 @@ class Client:
                     print(f"(client) Sending outgoing: {outgoing}")
                     self.client_socket.write(outgoing)
 
-            self._network_sync()
+            self._network_sync(self.client_socket.read())
 
             for fighter in self.other_fighters.values():
                 fighter.calculate()
@@ -130,13 +144,9 @@ class Client:
         # moved, so update the server
         return True
 
-    def _network_sync(self) -> bool:
+    def _network_sync(self, messages: list[MessageFormat]):
 
-        updated_state = False
-
-        while raw_message := self.client_socket.read():
-
-            message = receive_message(raw_message)
+        for message in messages:
 
             if not isinstance(message, FighterUpdate):
                 print(f"(client) dropping unexpected message {message!r}")
@@ -144,12 +154,13 @@ class Client:
 
             print(f"(client) received message: {message!r}")
 
+            assert message.get_network_id() is not None, "Cannot process a message without a network_id"
+
             if message.get_network_id() == self.local_fighter.network_id:
                 # It's MEEEEE
                 update_fighter(self.remote_fighter, message)
-                update_fighter(self.local_fighter, message)
+                self.local_fighter.coords = self.remote_fighter.coords
                 print(f"(client) received remote update on self: {message!r}")
-                updated_state = True
                 continue
 
             other_fighter: Fighter = self.other_fighters.get(message.get_network_id(), None)
@@ -165,9 +176,7 @@ class Client:
 
                 self.other_fighters[other_fighter.network_id] = other_fighter
 
-            updated_state = True
 
-        return updated_state
 
 #
 # MAIN

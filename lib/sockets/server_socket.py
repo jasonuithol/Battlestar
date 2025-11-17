@@ -1,14 +1,15 @@
 import socket
 from threading import Lock
 
-from lib.sockets.socket_message_codec import MessageFormat
+from lib.network_protocols.named_tuple_codec import MessageFormat
+from lib.network_protocols.network_codec import NetworkCodec
 from lib.thread_runner import ThreadRunner
 
 from .socket_connection import SocketConnection
 from .sock_utils import LISTENER_PORT, NetworkId, create_timingout_socket, get_machine_address
 
 class ServerSocket(ThreadRunner):
-    def __init__(self):
+    def __init__(self, codec: NetworkCodec[MessageFormat]):
         super().__init__(
             name   = "Server Listener",
             daemon = True,
@@ -18,10 +19,11 @@ class ServerSocket(ThreadRunner):
         self._host = get_machine_address()
         self._sock = create_timingout_socket()
 
+        self._codec = codec
+
         self._clients_lock = Lock()
         self._clients = dict[NetworkId, SocketConnection]()
 
-#        self._dead_clients_lock = Lock()
         self._dead_clients = set[NetworkId]()
 
     def start(self):
@@ -37,7 +39,7 @@ class ServerSocket(ThreadRunner):
             return
         
         print(f"(server_socket) got client connection: {network_id}")
-        socket_connection = SocketConnection(client_sock)
+        socket_connection = SocketConnection(client_sock, self._codec)
         socket_connection.start()
         self._add_client(network_id, socket_connection)
 
@@ -48,22 +50,20 @@ class ServerSocket(ThreadRunner):
     def readall(self) -> list[tuple[NetworkId, MessageFormat]]:
         messages = []
         for network_id in self.clients.keys():
-            message = self.read_from(network_id)
-            if message:
+            for message in self.read_from(network_id):
                 messages.append((network_id, message))
         return messages
 
-    def read_from(self, network_id: NetworkId) -> MessageFormat:
+    def read_from(self, network_id: NetworkId) -> list[MessageFormat]:
         client = self._get_client(network_id)
         if client:
             if client.is_down():
                 self._reap_dead_client(network_id)
-                return None
-            message = client.read()
-            return message
+                return []
+            return client.read()
         else:
             print(f"(server_socket) returning None for read from unknown network_id: {network_id}")
-            return None
+            return []
 
     def write_to(self, network_id: NetworkId, message: MessageFormat):
         client = self._get_client(network_id)
@@ -78,10 +78,12 @@ class ServerSocket(ThreadRunner):
     def _add_client(self, network_id: NetworkId, client_connection: SocketConnection):
         with self._clients_lock:
             self._clients[network_id] = client_connection
+            print(f"(server_socket) Now connected to {len(self._clients)} clients")
 
     def _remove_client(self, network_id: NetworkId):
         with self._clients_lock:
             del self._clients[network_id]
+            print(f"(server_socket) Now connected to {len(self._clients)} clients")
 
     def _get_client(self, network_id: NetworkId):
         with self._clients_lock:

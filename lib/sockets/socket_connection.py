@@ -1,16 +1,17 @@
 import socket
 
-from lib.sockets.socket_message_codec import MessageFormat
+from lib.network_protocols.named_tuple_codec import MessageFormat
+from lib.network_protocols.network_codec import NetworkCodec
 
 from .socket_reader import SocketReader
 from .socket_writer import SocketWriter
 
 class SocketConnection:
 
-    def __init__(self, sock: socket.socket):
+    def __init__(self, sock: socket.socket, codec: NetworkCodec[MessageFormat]):
         self._sock   = sock
-        self._reader = SocketReader(sock)
-        self._writer = SocketWriter(sock)
+        self._reader = SocketReader(sock, codec)
+        self._writer = SocketWriter(sock, codec)
         __slots__ = ()
 
     def start(self):
@@ -22,7 +23,7 @@ class SocketConnection:
         self._writer.stop(blocking)
         self._sock.close()
 
-    def read(self) -> MessageFormat:
+    def read(self) -> list[MessageFormat]:
         return self._reader.read()
     
     def write(self, message: MessageFormat):

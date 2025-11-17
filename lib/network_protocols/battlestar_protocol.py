@@ -1,10 +1,7 @@
 from typing import NamedTuple
-
-from lib.dark_named_tuple_protocol import DarkNamedTupleProtocol
 from lib.sockets.sock_utils import NetworkId
-from lib.sockets.socket_message_codec import MessageFormat
 
-from models.fighter import Fighter, FighterColor
+from state.fighter import Fighter, FighterColor
 
 def _network_id(self) -> NetworkId:
     return self.network_id_host, self.network_id_port
@@ -59,20 +56,16 @@ class AccelerateRequest(NamedTuple):
 
     get_network_id = _network_id
 
-import sys
-this_module = sys.modules[__name__]
-protocol = DarkNamedTupleProtocol(this_module)
+def connect_request() -> ConnectRequest:
+    return ConnectRequest()
 
-def connect_request() -> MessageFormat:
-    return protocol.encode(ConnectRequest())
+def connect_reject(reason: str) -> ConnectReject:
+    return ConnectReject(reason)
 
-def connect_reject(reason: str) -> MessageFormat:
-    return protocol.encode(ConnectReject(reason))
+def connect_error(reason: str) -> ConnectError:
+    return connect_error(reason)
 
-def connect_error(reason: str) -> MessageFormat:
-    return protocol.encode(connect_error(reason))
-
-def fighter_update(fighter: Fighter) -> MessageFormat:
+def fighter_update(fighter: Fighter) -> FighterUpdate:
 
     assert fighter.network_id, "Cannot send a fighter_update without a network_id"
     assert isinstance(fighter.network_id, tuple), f"network_id got unexpected value {fighter.network_id!r}"
@@ -97,7 +90,7 @@ def fighter_update(fighter: Fighter) -> MessageFormat:
         thiccness  = fighter.thiccness
     )
 
-    return protocol.encode(message)
+    return message
 
 def create_fighter(fighter_update: FighterUpdate):
     fighter = Fighter()
@@ -108,11 +101,11 @@ def create_fighter(fighter_update: FighterUpdate):
 def update_fighter(fighter: Fighter, fighter_update: FighterUpdate):
     fighter.coords    = fighter_update.get_coords()
     fighter.color     = fighter_update.get_color()
-    fighter.angle     = fighter.angle
-    fighter.radius    = fighter.radius
-    fighter.thiccness = fighter.thiccness
+    fighter.angle     = fighter_update.angle
+    fighter.radius    = fighter_update.radius
+    fighter.thiccness = fighter_update.thiccness
 
-def rotate(network_id: NetworkId, angle_delta: float):
+def rotate(network_id: NetworkId, angle_delta: float) -> RotateRequest:
 
     host, port = network_id
 
@@ -122,20 +115,17 @@ def rotate(network_id: NetworkId, angle_delta: float):
         angle_delta     = angle_delta
     )
 
-    return protocol.encode(message)
+    return message
 
-def accelerate(network_id: NetworkId, velocity_delta: float):
+def accelerate(network_id: NetworkId, velocity_delta: float) -> AccelerateRequest:
 
     host, port = network_id
 
-    message = RotateRequest(
+    message = AccelerateRequest(
         network_id_host = host,
         network_id_port = port,
         velocity_delta  = velocity_delta
     )
 
-    return protocol.encode(message)
-
-def receive_message(message: MessageFormat) -> NamedTuple:
-    return protocol.decode(message)
+    return message
 

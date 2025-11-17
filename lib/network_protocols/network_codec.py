@@ -1,0 +1,6 @@
+from typing import Protocol
+
+class NetworkCodec[TMessage](Protocol):
+
+    def encode(self, message: TMessage) -> bytes: ...
+    def decode(self, data: bytes) -> TMessage: ...

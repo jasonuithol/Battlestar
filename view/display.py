@@ -1,7 +1,7 @@
 from threading import Lock
 import pygame
 
-from models.fighter import Fighter
+from state.fighter import Fighter
 
 NOMINAL_FPS = 60.0
 
@@ -59,6 +59,9 @@ class Display:
     
     def add_fighter(self, fighter: Fighter):
         with self._fighter_lock:
+
+            assert not any(f for f in self._fighters if f.color == fighter.color), "Cannot have two fighters of the same color"
+
             self._fighters.add(fighter)
             num_fighters = len(self._fighters)
 
