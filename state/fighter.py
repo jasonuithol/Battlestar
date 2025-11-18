@@ -1,12 +1,8 @@
 import datetime
-import math
-
-import pygame
 from lib.sockets.sock_utils import NetworkId
 
 ANGULAR_SPEED = 0.1
 ACCELERATION_MAGNITUDE = 3.0
-
 IMPULSE_DURATION: float = 50.0 / 1000
 
 FighterColor = tuple[int, int ,int]
@@ -16,7 +12,6 @@ class Fighter:
     def __init__(self):
 
         self.network_id:  NetworkId    = None
-        self.server_slot: int          = None
         self.color:       FighterColor = None
 
         self.coords: tuple[int, int] = None
@@ -30,6 +25,16 @@ class Fighter:
 
         __slots__ = ()
 
+    def state_differs(self, remote: Fighter) -> bool:
+        return (
+            self.coords   != remote.coords
+            or
+            self.angle    != remote.angle
+            or
+            self.velocity != remote.velocity
+        )
+
+    '''
     def left(self):
         self.angle -= ANGULAR_SPEED
         self.angle %= math.pi * 2
@@ -52,6 +57,7 @@ class Fighter:
             self.velocity[1] + impulse[1],
         )
 
+    '''
     def calculate(self):
         new_calculation_time = datetime.datetime.now()
         seconds_elapsed = (new_calculation_time - self.last_calculated).total_seconds()

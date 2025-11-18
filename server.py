@@ -1,6 +1,8 @@
 import gc
 import time
 
+from copy import copy
+
 from state.state_bootstrapper import build_fighter_registry
 
 from lib.sockets.sock_utils import NetworkId
@@ -8,8 +10,9 @@ from lib.sockets.server_socket import ServerSocket
 
 import lib.network_protocols.battlestar_protocol
 
-from lib.network_protocols.named_tuple_codec import NamedTupleCodec
-from lib.network_protocols.battlestar_protocol import ConnectRequest, FighterUpdate, connect_reject, fighter_update, update_fighter
+from lib.network_protocols.named_tuple_codec import MessageFormat, NamedTupleCodec
+from lib.network_protocols.battlestar_protocol import AccelerateRequest, ConnectRequest, FighterUpdate, RotateRequest
+from lib.network_protocols.battlestar_protocol_interfaces.server_protocol import ServerProtocol
 
 class Server:
 
@@ -17,6 +20,7 @@ class Server:
 
         self.fighter_registry = build_fighter_registry()
 
+        self.server_protocol = ServerProtocol()
         self.server_socket = ServerSocket(
             codec = NamedTupleCodec(lib.network_protocols.battlestar_protocol)
         )
@@ -27,10 +31,8 @@ class Server:
         # remove dead clients
         for dead_network_id in self.server_socket.dead_clients:
 
-            spawn_slot = self.fighter_registry.find_attached_slot(dead_network_id)
-
             # Free up the spawn slot
-            spawn_slot.detach()
+            self.fighter_registry.despawn_fighter(dead_network_id)
 
             # Remove the dead fighter from the "is dead" list - we're done killing it.
             self.server_socket.remove_dead_client(dead_network_id)
@@ -39,29 +41,31 @@ class Server:
 
     def handle_connect_request(self, network_id: NetworkId):
 
-        available_slot = self.fighter_registry.get_available_slot()
-        if available_slot:
+        if self.fighter_registry.has_available_slots():
 
             print(f"(server) Adding fighter to session")
-            fighter = available_slot.attach(network_id)
-
+            spawned_fighter = self.fighter_registry.spawn_fighter(network_id)
 
             print(f"(server) sending acceptance response")
-            self.server_socket.write_to(network_id, fighter_update(fighter))
+            fighter_update = self.server_protocol.fighter_update(spawned_fighter.local_fighter)
+            self.server_socket.write_to(network_id, fighter_update)
 
         else:
             print(f"(server) sending rejection response")
-            self.server_socket.write_to(network_id, connect_reject("Server full"))
+            self.server_socket.write_to(network_id, self.server_protocol.connect_reject("Server full"))
 
         gc.collect()
 
     def calculate_and_broadcast_updates(self):
 
-        for fighter in self.fighter_registry.get_attached_fighters():
-            fighter.calculate()
-            self.server_socket.broadcast(fighter_update(fighter))
+        for spawned_fighter in self.fighter_registry.get_registered_fighters():
+            spawned_fighter.local_fighter.calculate()
+            if spawned_fighter.local_fighter.state_differs(spawned_fighter.remote_fighter):
+                self.server_socket.broadcast(self.server_protocol.fighter_update(spawned_fighter.local_fighter))
+                spawned_fighter.remote_fighter = copy(spawned_fighter.local_fighter)
             time.sleep(0.001)
 
+    '''
     def handle_fighter_update(self, network_id: NetworkId, message: FighterUpdate):
 
         if message.get_network_id() != network_id:
@@ -78,9 +82,50 @@ class Server:
         # TODO: Check that the client is allowed to do the things they say they do
         #
         print("(server) received fighter update")
-        update_fighter(fighter, message)
+        ???
+        self.server_protocol.update_fighter(fighter, message)
 
         gc.collect()
+    '''
+
+    def handle_rotate_request(self, network_id: NetworkId, rotate_request: RotateRequest):
+        spawned_fighter = self.fighter_registry.get_spawned_fighter(network_id)
+        self.server_protocol.update_fighter_rotation(spawned_fighter.local_fighter, rotate_request)
+        spawned_fighter.remote_fighter = copy(spawned_fighter.local_fighter)        
+
+    def handle_accelerate_request(self, network_id: NetworkId, accelerate_request: AccelerateRequest):
+        spawned_fighter = self.fighter_registry.get_spawned_fighter(network_id)
+        self.server_protocol.update_fighter_acceleration(spawned_fighter.local_fighter, accelerate_request)        
+        spawned_fighter.remote_fighter = copy(spawned_fighter.local_fighter)        
+
+    def dispatch_message(self, server_message: MessageFormat):
+
+        network_id, message = server_message
+        print(f"(server) received message {message} from {network_id}")
+
+        if message is None:
+            print(f"(server) Dropping null message from {network_id}")
+            return
+        
+#        assert network_id == message.get_network_id(), "Got corrupted network_id"
+
+        if isinstance(message, ConnectRequest):
+            self.handle_connect_request(network_id)
+
+        elif isinstance(message, RotateRequest):
+            self.handle_rotate_request(network_id, message)
+
+        elif isinstance(message, AccelerateRequest):
+            self.handle_accelerate_request(network_id, message)
+
+            '''
+        elif isinstance(message, FighterUpdate):
+            self.handle_fighter_update(network_id, message)
+            '''
+
+        else:
+            print(f"(server) received unknown message {message} from {network_id}")      
+
 
     #
     # MAIN LOOP
@@ -98,22 +143,7 @@ class Server:
                 print(f"(server) received {len(incoming_messages)} incoming messages")
 
             for server_message in incoming_messages:
-
-                network_id, message = server_message
-                print(f"(server) received message {message} from {network_id}")
-                if message is None:
-                    print(f"(server) Dropping null message from {network_id}")
-                    continue
-
-                if isinstance(message, ConnectRequest):
-                    self.handle_connect_request(network_id)
-
-                elif isinstance(message, FighterUpdate):
-                    self.handle_fighter_update(network_id, message)
-
-                else:
-                    print(f"(server) received unknown message {message} from {network_id}")
-
+                self.dispatch_message(server_message)
 
             self.calculate_and_broadcast_updates()
             time.sleep(0.01)

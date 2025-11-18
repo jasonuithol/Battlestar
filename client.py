@@ -2,7 +2,7 @@ import gc
 import time
 import pygame
 
-from state.fighter import Fighter
+from state.fighter import ACCELERATION_MAGNITUDE, ANGULAR_SPEED, Fighter
 
 from lib.sockets.client_socket import ClientSocket
 from lib.sockets.sock_utils import NetworkId
@@ -10,7 +10,8 @@ from lib.sockets.sock_utils import NetworkId
 import lib.network_protocols.battlestar_protocol
 
 from lib.network_protocols.named_tuple_codec import MessageFormat, NamedTupleCodec
-from lib.network_protocols.battlestar_protocol import FighterUpdate, connect_request, create_fighter, fighter_update, update_fighter
+from lib.network_protocols.battlestar_protocol import FighterUpdate
+from lib.network_protocols.battlestar_protocol_interfaces.client_protocol import ClientProtocol
 
 from view.display import Display
 
@@ -19,6 +20,7 @@ class Client:
     def __init__(self):
 
         self.client_socket = ClientSocket(codec = NamedTupleCodec(lib.network_protocols.battlestar_protocol))
+        self.protocol = ClientProtocol()
 
         self.local_fighter  = Fighter()
         self.remote_fighter = Fighter()
@@ -57,7 +59,7 @@ class Client:
 
         print("(client) joining session")
 
-        self.client_socket.write(connect_request())
+        self.client_socket.write(self.protocol.connect_request())
 
         print("(client) waiting for response from server")
 
@@ -72,8 +74,8 @@ class Client:
                     exit()
 
                 if isinstance(message, FighterUpdate):
-                    self.local_fighter  = create_fighter(message)
-                    self.remote_fighter = create_fighter(message)
+                    self.local_fighter  = self.protocol.create_fighter(message)
+                    self.remote_fighter = self.protocol.create_fighter(message)
 
                     self.display.add_fighter(self.local_fighter)
                     connected = True
@@ -102,22 +104,13 @@ class Client:
 
         while self.running:
             for event in pygame.event.get():
-                if self._dispatch_event(event):
-                    outgoing = fighter_update(self.local_fighter)
-                    print(f"(client) Sending outgoing: {outgoing}")
-                    self.client_socket.write(outgoing)
+                self._dispatch_event(event)
 
             self._network_sync(self.client_socket.read())
-
-            for fighter in self.other_fighters.values():
-                fighter.calculate()
-
-            self.local_fighter.calculate()
-
             self.display.draw()
             self.display.render()
 
-    def _dispatch_event(self, event: pygame.event.Event) -> bool:
+    def _dispatch_event(self, event: pygame.event.Event):
 
         if event.type == pygame.QUIT:
             self.running = False
@@ -130,19 +123,21 @@ class Client:
             self.running = False
             return
 
+        outgoing: MessageFormat = None
+        fighter = self.local_fighter
+        network_id = fighter.network_id
+
         if event.key == pygame.K_LEFT:
-            self.local_fighter.left()
+            outgoing = self.protocol.rotate(network_id, -ANGULAR_SPEED)
         elif event.key == pygame.K_RIGHT:
-            self.local_fighter.right()
+            outgoing = self.protocol.rotate(network_id, +ANGULAR_SPEED)
         elif event.key == pygame.K_UP:
-            self.local_fighter.forward()
+            outgoing = self.protocol.accelerate(network_id, fighter, +ACCELERATION_MAGNITUDE)
         elif event.key == pygame.K_DOWN:
-            self.local_fighter.backward()
-        else:
-            return False
-        
-        # moved, so update the server
-        return True
+            outgoing = self.protocol.accelerate(network_id, fighter, -ACCELERATION_MAGNITUDE)
+
+        if outgoing:
+            self.client_socket.write(outgoing)
 
     def _network_sync(self, messages: list[MessageFormat]):
 
@@ -158,7 +153,7 @@ class Client:
 
             if message.get_network_id() == self.local_fighter.network_id:
                 # It's MEEEEE
-                update_fighter(self.remote_fighter, message)
+                self.protocol.update_fighter(self.remote_fighter, message)
                 self.local_fighter.coords = self.remote_fighter.coords
                 print(f"(client) received remote update on self: {message!r}")
                 continue
@@ -167,16 +162,14 @@ class Client:
 
             if other_fighter:
                 print(f"(client) received remote update on other player: {message!r}")
-                update_fighter(other_fighter, message)
+                self.protocol.update_fighter(other_fighter, message)
 
             else:
-                other_fighter = create_fighter(message)
+                other_fighter = self.protocol.create_fighter(message)
                 self.display.add_fighter(other_fighter)
                 print(f"(client) another player joined the server: {other_fighter.network_id}")
 
                 self.other_fighters[other_fighter.network_id] = other_fighter
-
-
 
 #
 # MAIN

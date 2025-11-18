@@ -30,7 +30,7 @@ class SocketConnection:
         self._writer.write(message)
 
     def is_alive(self) -> bool:
-        return self._reader.is_alive and self._writer.is_alive
+        return self._reader.is_alive() and self._writer.is_alive()
 
     def has_error_state(self) -> bool:
         return self._reader.error_state() or self._writer.error_state()

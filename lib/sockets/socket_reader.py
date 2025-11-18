@@ -5,7 +5,7 @@ from lib.network_protocols.named_tuple_codec import MessageFormat
 from lib.network_protocols.network_codec import NetworkCodec
 
 from .socket_wrapper import SocketWrapper
-from .sock_utils import BUFFER_SIZE
+from .sock_utils import BUFFER_SIZE, EMTPY_MESSAGE_LIMIT
 
 class SocketReader(SocketWrapper):
 
@@ -17,14 +17,16 @@ class SocketReader(SocketWrapper):
         )
 
         self._codec = codec
+        self._empty_message_count = 0
 
     def loop(self):
         try:
             message = self._sock.recv(BUFFER_SIZE)
             if message is None or len(message) == 0:
-                print("(socket_reader) received empty message - dropping message")
-#                print("(socket_reader) received empty message - peer disconnected - closing connection")
-#                self.is_alive = False
+                self._empty_message_count += 1
+                print(f"(socket_reader) received empty message #{self._empty_message_count} - dropping message. Limit = {EMTPY_MESSAGE_LIMIT}")
+                if self._empty_message_count >= EMTPY_MESSAGE_LIMIT:
+                    self._alive = False
                 return
             decoded = self._codec.decode(message)
             for decoded in self._codec.decode(message):
